@@ -1,58 +1,85 @@
-import { FC, ReactNode, useReducer } from 'react';
-import { v4 as uuidv4 } from 'uuid';
+import { FC, ReactNode, useEffect, useReducer } from 'react';
+
+import { useSnackbar } from 'notistack';
 
 import { EntriesContext, entriesReducer } from './';
 import { Entry } from '@/interfaces';
+import { entriesApi } from '@/apis';
 
 export interface EntriesState {
   entries: Entry[];
 }
 
 const Entries_INITIAL_STATE: EntriesState = {
-  entries: [
-    {
-      _id: uuidv4(),
-      description:
-        'Pending: Eu mollit occaecat consequat laboris deserunt aute.',
-      status: 'pending',
-      createdAt: Date.now(),
-    },
-    {
-      _id: uuidv4(),
-      description:
-        'In-progress: Commodo anim ea nostrud reprehenderit minim nulla voluptate commodo.',
-      status: 'in-progress',
-      createdAt: Date.now() - 1000000,
-    },
-    {
-      _id: uuidv4(),
-      description:
-        'Finished: Cupidatat sunt aliquip Lorem aliquip ea veniam minim sit velit sint non Lorem ut nulla.',
-      status: 'finished',
-      createdAt: Date.now() - 100000,
-    },
-  ],
+  entries: [],
 };
 
 export const EntriesProvider: FC<{ children: ReactNode | ReactNode[] }> = ({
   children,
 }) => {
   const [state, dispatch] = useReducer(entriesReducer, Entries_INITIAL_STATE);
+  const { enqueueSnackbar } = useSnackbar();
 
-  const addNewEntry = (description: string) => {
-    const newEntry: Entry = {
-      _id: uuidv4(),
-      description,
-      status: 'pending',
-      createdAt: Date.now(),
-    };
-
-    dispatch({ type: '[Entry] - Add entry', payload: newEntry });
+  const addNewEntry = async (description: string) => {
+    const { data } = await entriesApi.post<Entry>('/entries', { description });
+    dispatch({ type: '[Entry] - Add entry', payload: data });
   };
 
-  const updateEntry = (entry: Entry) => {
-    dispatch({ type: '[Entry] - Update entry', payload: entry });
+  const updateEntry = async (
+    { _id, description, status }: Entry,
+    showSnackbar = false
+  ) => {
+    try {
+      const { data } = await entriesApi.put<Entry>(`/entries/${_id}`, {
+        description: description,
+        status: status,
+      });
+      dispatch({ type: '[Entry] - Update entry', payload: data });
+
+      if (showSnackbar) {
+        enqueueSnackbar('Entry updated', {
+          variant: 'success',
+          autoHideDuration: 1500,
+          anchorOrigin: {
+            vertical: 'top',
+            horizontal: 'right',
+          },
+        });
+      }
+    } catch (error) {
+      console.log({ error });
+    }
   };
+
+  const deleteEntry = async ({ _id }: Entry): Promise<Entry | null> => {
+    try {
+      const { data } = await entriesApi.delete<Entry>(`/entries/${_id}`);
+      dispatch({ type: '[Entry] - Delete entry', payload: data });
+
+      enqueueSnackbar('Entry deleted', {
+        variant: 'success',
+        autoHideDuration: 1500,
+        anchorOrigin: {
+          vertical: 'top',
+          horizontal: 'right',
+        },
+      });
+
+      return data;
+    } catch (error) {
+      console.log({ error });
+      return null;
+    }
+  };
+
+  const refreshEntries = async () => {
+    const { data } = await entriesApi.get<Entry[]>('/entries');
+    dispatch({ type: '[Entry] - Refresh entries', payload: data });
+  };
+
+  useEffect(() => {
+    refreshEntries();
+  }, []);
 
   return (
     <EntriesContext.Provider
@@ -62,6 +89,7 @@ export const EntriesProvider: FC<{ children: ReactNode | ReactNode[] }> = ({
         //  Methods
         addNewEntry,
         updateEntry,
+        deleteEntry,
       }}
     >
       {children}
